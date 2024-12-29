@@ -26,18 +26,32 @@ class SolarMonitor {
 		this.telegramChatIds = Array.isArray(telegramChatIds)
 			? telegramChatIds
 			: [telegramChatIds];
-		this.zeroReadingsCount = 0;
+
+		// Configuración de intervalos y tiempos
 		this.checkIntervalMinutes = 10;
-		this.hoursToNotify = 2;
+		this.hoursToNotifyPower = 2;
+		this.hoursToNotifyEnergy = 2;
+
+		// Cálculo de lecturas necesarias basado en los intervalos
 		this.requiredZeroReadings =
-			(this.hoursToNotify * 60) / this.checkIntervalMinutes;
+			(this.hoursToNotifyPower * 60) / this.checkIntervalMinutes;
+		this.requiredStagnantReadings =
+			(this.hoursToNotifyEnergy * 60) / this.checkIntervalMinutes;
+
+		// Contadores y estado
+		this.zeroReadingsCount = 0;
 		this.lastAlert = null;
 		this.alertCooldownHours = 4;
+		this.lastTodayEnergy = null;
+		this.lastTodayEnergyUpdate = null;
+		this.todayEnergyStagnantCount = 0;
+		this.energyAlertSent = false;
+
 		this.apiUrl =
 			"https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file";
 	}
 
-	async getCurrentPower() {
+	async getCurrentPowerAndEnergy() {
 		try {
 			const url = `${this.apiUrl}?kk=${PLANT_ID}`;
 			const response = await fetch(url);
@@ -48,9 +62,16 @@ class SolarMonitor {
 			const decodedData = decode(jsonData.data);
 			const parsedData = JSON.parse(decodedData);
 			const currentPower = parsedData.realKpi.realTimePower;
-			return Number.parseFloat(currentPower);
+			const todayEnergy = parsedData.realKpi.dailyEnergy;
+			return {
+				power: Number.parseFloat(currentPower),
+				todayEnergy: Number.parseFloat(todayEnergy),
+			};
 		} catch (error) {
-			console.error("Error al obtener datos de potencia:", error.message);
+			console.error(
+				"Error al obtener datos de la instalación solar:",
+				error.message,
+			);
 			await this.sendTelegramMessage(
 				"⚠️ Error al obtener datos de la instalación solar",
 			);
@@ -119,21 +140,25 @@ class SolarMonitor {
 		if (!this.isSunUp()) {
 			console.log("Es de noche. No se realizan chequeos.");
 			this.zeroReadingsCount = 0;
+			this.todayEnergyStagnantCount = 0;
+			this.lastTodayEnergy = null;
+			this.lastTodayEnergyUpdate = null;
+			this.energyAlertSent = false;
 			return;
 		}
 
-		const currentPower = await this.getCurrentPower();
+		const data = await this.getCurrentPowerAndEnergy();
+		if (!data) return;
 
-		if (currentPower === null) return;
-
-		if (currentPower < 0.01) {
+		// Verificación de potencia actual
+		if (data.power < 0.01) {
 			this.zeroReadingsCount++;
 			console.log(
-				`Lectura de potencia cero (${currentPower})W #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
+				`Lectura de potencia cero (${data.power})W #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
 			);
 
 			if (this.zeroReadingsCount >= this.requiredZeroReadings) {
-				const message = `⚠️ Sistema solar posiblemente apagado.\nSin producción durante las últimas ${this.hoursToNotify} horas con luz solar.\nÚltima lectura: ${currentPower} kW`;
+				const message = `⚠️ Sistema solar posiblemente apagado.\nSin producción durante las últimas ${this.hoursToNotifyPower} horas con luz solar.\nÚltima lectura: ${data.power} kW`;
 				await this.sendAlert(message);
 			}
 		} else {
@@ -141,11 +166,47 @@ class SolarMonitor {
 				console.log("Sistema funcionando normalmente. Reiniciando contador.");
 				if (this.zeroReadingsCount >= this.requiredZeroReadings) {
 					await this.sendTelegramMessage(
-						`✅ Sistema solar funcionando nuevamente\nPotencia actual: ${currentPower} kW`,
+						`✅ Sistema solar funcionando nuevamente\nPotencia actual: ${data.power} kW`,
 					);
 				}
 			}
 			this.zeroReadingsCount = 0;
+		}
+
+		// Verificación de energía diaria
+		if (this.lastTodayEnergy === null) {
+			this.lastTodayEnergy = data.todayEnergy;
+			this.lastTodayEnergyUpdate = Date.now();
+			this.todayEnergyStagnantCount = 0;
+		} else if (data.todayEnergy === this.lastTodayEnergy) {
+			this.todayEnergyStagnantCount++;
+			console.log(
+				`Energía diaria sin cambios (${data.todayEnergy} kWh) #${this.todayEnergyStagnantCount} - ${new Date().toLocaleString()}`,
+			);
+
+			if (
+				this.todayEnergyStagnantCount >= this.requiredStagnantReadings &&
+				!this.energyAlertSent
+			) {
+				const hoursStagnant =
+					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
+				const message = `⚠️ La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\nValor actual: ${data.todayEnergy} kWh`;
+				await this.sendAlert(message);
+				this.energyAlertSent = true;
+			}
+		} else {
+			if (this.energyAlertSent) {
+				const hoursStagnant =
+					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
+				await this.sendTelegramMessage(
+					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\nNuevo valor: ${data.todayEnergy} kWh`,
+				);
+				this.energyAlertSent = false;
+			}
+			console.log(`Energía diaria actualizada: ${data.todayEnergy} kWh`);
+			this.lastTodayEnergy = data.todayEnergy;
+			this.lastTodayEnergyUpdate = Date.now();
+			this.todayEnergyStagnantCount = 0;
 		}
 	}
 
