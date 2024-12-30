@@ -179,6 +179,9 @@ class SolarMonitor {
 			this.lastTodayEnergy = data.todayEnergy;
 			this.lastTodayEnergyUpdate = Date.now();
 			this.todayEnergyStagnantCount = 0;
+			console.log(
+				`Energía diaria inicial: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
+			);
 		} else if (data.todayEnergy === this.lastTodayEnergy) {
 			this.todayEnergyStagnantCount++;
 			console.log(
