@@ -214,7 +214,7 @@ class SolarMonitor {
 	start() {
 		console.log("Iniciando monitorización del sistema solar...");
 		console.log("Chat IDs configurados:", this.telegramChatIds);
-		this.sendTelegramMessage("🟢 Monitor del sistema solar iniciado");
+		// this.sendTelegramMessage("🟢 Monitor del sistema solar iniciado");
 		setInterval(
 			() => this.checkSystem(),
 			this.checkIntervalMinutes * 60 * 1000,
