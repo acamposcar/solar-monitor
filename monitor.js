@@ -182,7 +182,7 @@ class SolarMonitor {
 		} else if (data.todayEnergy === this.lastTodayEnergy) {
 			this.todayEnergyStagnantCount++;
 			console.log(
-				`Energía diaria sin cambios (${data.todayEnergy} kWh) #${this.todayEnergyStagnantCount} - ${new Date().toLocaleString()}`,
+				`Energía diaria sin cambios (${data.todayEnergy} kWh). Potencia actual: ${data.power} kW -  #${this.todayEnergyStagnantCount} - ${new Date().toLocaleString()}`,
 			);
 
 			if (
@@ -193,6 +193,9 @@ class SolarMonitor {
 					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
 				const message = `⚠️ Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`;
 				await this.sendAlert(message);
+				console.log(
+					`Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
+				);
 				this.energyAlertSent = true;
 			}
 		} else {
@@ -202,9 +205,14 @@ class SolarMonitor {
 				await this.sendTelegramMessage(
 					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
+				console.log(
+					`Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas.`,
+				);
 				this.energyAlertSent = false;
 			}
-			console.log(`Energía diaria actualizada: ${data.todayEnergy} kWh`);
+			console.log(
+				`Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
+			);
 			this.lastTodayEnergy = data.todayEnergy;
 			this.lastTodayEnergyUpdate = Date.now();
 			this.todayEnergyStagnantCount = 0;
