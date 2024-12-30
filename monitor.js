@@ -180,7 +180,7 @@ class SolarMonitor {
 			this.lastTodayEnergyUpdate = Date.now();
 			this.todayEnergyStagnantCount = 0;
 			console.log(
-				`Energía diaria inicial: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
+				`Energía diaria inicial: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW - ${new Date().toLocaleString()}`,
 			);
 		} else if (data.todayEnergy === this.lastTodayEnergy) {
 			this.todayEnergyStagnantCount++;
@@ -197,7 +197,7 @@ class SolarMonitor {
 				const message = `⚠️ Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`;
 				await this.sendAlert(message);
 				console.log(
-					`Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
+					`Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas. - ${new Date().toLocaleString()}\n - Energia diaria: ${data.todayEnergy} kWh\n - Potencia actual: ${data.power} kW`,
 				);
 				this.energyAlertSent = true;
 			}
@@ -209,12 +209,12 @@ class SolarMonitor {
 					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
 				console.log(
-					`Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas.`,
+					`Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas. - ${new Date().toLocaleString()}`,
 				);
 				this.energyAlertSent = false;
 			}
 			console.log(
-				`Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
+				`Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW - ${new Date().toLocaleString()}`,
 			);
 			this.lastTodayEnergy = data.todayEnergy;
 			this.lastTodayEnergyUpdate = Date.now();
