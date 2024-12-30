@@ -137,15 +137,15 @@ class SolarMonitor {
 	}
 
 	async checkSystem() {
-		// if (!this.isSunUp()) {
-		// 	console.log("Es de noche. No se realizan chequeos.");
-		// 	this.zeroReadingsCount = 0;
-		// 	this.todayEnergyStagnantCount = 0;
-		// 	this.lastTodayEnergy = null;
-		// 	this.lastTodayEnergyUpdate = null;
-		// 	this.energyAlertSent = false;
-		// 	return;
-		// }
+		if (!this.isSunUp()) {
+			console.log("Es de noche. No se realizan chequeos.");
+			this.zeroReadingsCount = 0;
+			this.todayEnergyStagnantCount = 0;
+			this.lastTodayEnergy = null;
+			this.lastTodayEnergyUpdate = null;
+			this.energyAlertSent = false;
+			return;
+		}
 
 		const data = await this.getCurrentPowerAndEnergy();
 		if (!data) return;
