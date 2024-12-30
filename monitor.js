@@ -151,28 +151,28 @@ class SolarMonitor {
 		if (!data) return;
 
 		// Verificación de potencia actual
-		if (data.power < 0.01) {
-			this.zeroReadingsCount++;
-			console.log(
-				`Lectura de potencia cero (${data.power} KW) #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
-			);
+		// if (data.power < 0.01) {
+		// 	this.zeroReadingsCount++;
+		// 	console.log(
+		// 		`Lectura de potencia cero (${data.power} KW) #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
+		// 	);
 
-			if (this.zeroReadingsCount >= this.requiredZeroReadings) {
-				const message = `⚠️ Sistema solar posiblemente apagado.\nSin producción durante las últimas ${this.hoursToNotifyPower} horas con luz solar.\nÚltima lectura: ${data.power} kW`;
-				await this.sendAlert(message);
-			}
-		} else {
-			if (this.zeroReadingsCount > 0) {
-				console.log("Sistema funcionando normalmente. Reiniciando contador.");
-				if (this.zeroReadingsCount >= this.requiredZeroReadings) {
-					await this.sendTelegramMessage(
-						`✅ Sistema solar funcionando nuevamente\nPotencia actual: ${data.power} kW`,
-					);
-				}
-			}
-			console.log(`Potencia actual: ${data.power} kW`);
-			this.zeroReadingsCount = 0;
-		}
+		// 	if (this.zeroReadingsCount >= this.requiredZeroReadings) {
+		// 		const message = `⚠️ Sistema solar posiblemente apagado.\nSin producción durante las últimas ${this.hoursToNotifyPower} horas con luz solar.\nÚltima lectura: ${data.power} kW`;
+		// 		await this.sendAlert(message);
+		// 	}
+		// } else {
+		// 	if (this.zeroReadingsCount > 0) {
+		// 		console.log("Sistema funcionando normalmente. Reiniciando contador.");
+		// 		if (this.zeroReadingsCount >= this.requiredZeroReadings) {
+		// 			await this.sendTelegramMessage(
+		// 				`✅ Sistema solar funcionando nuevamente\nPotencia actual: ${data.power} kW`,
+		// 			);
+		// 		}
+		// 	}
+		// 	console.log(`Potencia actual: ${data.power} kW`);
+		// 	this.zeroReadingsCount = 0;
+		// }
 
 		// Verificación de energía diaria
 		if (this.lastTodayEnergy === null) {
@@ -191,7 +191,7 @@ class SolarMonitor {
 			) {
 				const hoursStagnant =
 					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
-				const message = `⚠️ La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\nValor actual: ${data.todayEnergy} kWh`;
+				const message = `⚠️ Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`;
 				await this.sendAlert(message);
 				this.energyAlertSent = true;
 			}
@@ -200,7 +200,7 @@ class SolarMonitor {
 				const hoursStagnant =
 					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
 				await this.sendTelegramMessage(
-					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\nNuevo valor: ${data.todayEnergy} kWh`,
+					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
 				this.energyAlertSent = false;
 			}
