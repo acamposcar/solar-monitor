@@ -154,7 +154,7 @@ class SolarMonitor {
 		if (data.power < 0.01) {
 			this.zeroReadingsCount++;
 			console.log(
-				`Lectura de potencia cero (${data.power})W #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
+				`Lectura de potencia cero (${data.power} KW) #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
 			);
 
 			if (this.zeroReadingsCount >= this.requiredZeroReadings) {
@@ -170,6 +170,7 @@ class SolarMonitor {
 					);
 				}
 			}
+			console.log(`Potencia actual: ${data.power} kW`);
 			this.zeroReadingsCount = 0;
 		}
 
