@@ -29,8 +29,8 @@ class SolarMonitor {
 
 		// Configuración de intervalos y tiempos
 		this.checkIntervalMinutes = 10;
-		this.hoursToNotifyPower = 2;
-		this.hoursToNotifyEnergy = 2;
+		this.hoursToNotifyPower = 1;
+		this.hoursToNotifyEnergy = 1;
 
 		// Cálculo de lecturas necesarias basado en los intervalos
 		this.requiredZeroReadings =
