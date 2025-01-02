@@ -6,13 +6,15 @@ const TELEGRAM_CHAT_IDS = JSON.parse(process.env.TELEGRAM_CHAT_IDS);
 const PLANT_ID = process.env.PLANT_ID;
 const LATITUDE = Number.parseFloat(process.env.LATITUDE);
 const LONGITUDE = Number.parseFloat(process.env.LONGITUDE);
+const TIMEZONE = process.env.TZ;
 
 if (
 	!TELEGRAM_TOKEN ||
 	TELEGRAM_CHAT_IDS.length === 0 ||
 	!PLANT_ID ||
 	!LATITUDE ||
-	!LONGITUDE
+	!LONGITUDE ||
+	!TIMEZONE
 ) {
 	console.error("Error: Faltan variables de entorno");
 	process.exit(1);
@@ -31,6 +33,8 @@ class SolarMonitor {
 		this.checkIntervalMinutes = 10;
 		this.hoursToNotifyPower = 1;
 		this.hoursToNotifyEnergy = 1;
+		this.sunriseBufferMinutes = 30; // Buffer después del amanecer
+		this.sunsetBufferMinutes = 30; // Buffer antes del atardecer
 
 		// Cálculo de lecturas necesarias basado en los intervalos
 		this.requiredZeroReadings =
@@ -51,6 +55,9 @@ class SolarMonitor {
 			"https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file";
 	}
 
+	formatDate(date) {
+		return date.toLocaleString("es-ES", { timeZone: TIMEZONE });
+	}
 	async getCurrentPowerAndEnergy() {
 		try {
 			const url = `${this.apiUrl}?kk=${PLANT_ID}`;
@@ -82,7 +89,35 @@ class SolarMonitor {
 	isSunUp() {
 		const times = SunCalc.getTimes(new Date(), this.latitude, this.longitude);
 		const now = new Date();
-		return now > times.sunrise && now < times.sunset;
+		const minuteInMs = 60 * 1000;
+		// Añadir buffer después del amanecer
+		const sunriseWithBuffer = new Date(
+			times.sunrise.getTime() + this.sunriseBufferMinutes * minuteInMs,
+		);
+		// Restar buffer antes del atardecer
+		const sunsetWithBuffer = new Date(
+			times.sunset.getTime() - this.sunsetBufferMinutes * minuteInMs,
+		);
+
+		const isWithinBufferedDaylight =
+			now > sunriseWithBuffer && now < sunsetWithBuffer;
+
+		if (!isWithinBufferedDaylight) {
+			const timeUntilStart = sunriseWithBuffer - now;
+			const timeUntilEnd = sunsetWithBuffer - now;
+
+			if (timeUntilStart > 0) {
+				console.log(
+					`[${this.formatDate(now)}] Esperando ${Math.round(timeUntilStart / minuteInMs)} minutos después del amanecer (${this.formatDate(sunriseWithBuffer)}) para comenzar el monitoreo`,
+				);
+			} else if (timeUntilEnd < 0) {
+				console.log(
+					`[${this.formatDate(now)}] Monitoreo pausado hasta el amanecer. Próximo inicio: ${this.formatDate(new Date(times.sunrise.getTime() + 24 * 60 * 60 * 1000 + this.sunriseBufferMinutes * minuteInMs))}`,
+				);
+			}
+		}
+
+		return isWithinBufferedDaylight;
 	}
 
 	canSendAlert() {
@@ -115,22 +150,30 @@ class SolarMonitor {
 					throw new Error(`Telegram API error: ${errorData.description}`);
 				}
 
-				console.log(`Mensaje enviado correctamente a ${chatId}`);
+				console.log(
+					`[${this.formatDate(new Date())}] Mensaje enviado correctamente a ${chatId}`,
+				);
 			} catch (error) {
-				console.error(`Error al enviar mensaje a ${chatId}:`, error.message);
+				console.error(
+					`[${this.formatDate(new Date())}] Error al enviar mensaje a ${chatId}:`,
+					error.message,
+				);
 				errors.push({ chatId, error: error.message });
 			}
 		}
 
 		if (errors.length > 0) {
-			console.error("Errores al enviar mensajes:", errors);
+			console.error(
+				`[${this.formatDate(new Date())}] Errores al enviar mensajes:`,
+				errors,
+			);
 		}
 	}
 
 	async sendAlert(message) {
 		if (!this.canSendAlert()) return;
 
-		const formattedMessage = `🔴 <b>Alerta Sistema Solar</b>\n\n${message}\n\nFecha: ${new Date().toLocaleString()}`;
+		const formattedMessage = `🔴 <b>Alerta Sistema Solar</b>\n\n${message}\n\nFecha: ${this.formatDate(new Date())}`;
 		await this.sendTelegramMessage(formattedMessage);
 
 		this.lastAlert = Date.now();
@@ -138,7 +181,6 @@ class SolarMonitor {
 
 	async checkSystem() {
 		if (!this.isSunUp()) {
-			console.log("Es de noche. No se realizan chequeos.");
 			this.zeroReadingsCount = 0;
 			this.todayEnergyStagnantCount = 0;
 			this.lastTodayEnergy = null;
@@ -180,12 +222,12 @@ class SolarMonitor {
 			this.lastTodayEnergyUpdate = Date.now();
 			this.todayEnergyStagnantCount = 0;
 			console.log(
-				`Energía diaria: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW - ${new Date().toLocaleString()}`,
+				`[${this.formatDate(new Date())}] Energía diaria: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
 			);
 		} else if (data.todayEnergy === this.lastTodayEnergy) {
 			this.todayEnergyStagnantCount++;
 			console.log(
-				`Energía diaria sin cambios (${data.todayEnergy} kWh). Potencia actual: ${data.power} kW -  #${this.todayEnergyStagnantCount} - ${new Date().toLocaleString()}`,
+				`[${this.formatDate(new Date())}] Energía diaria sin cambios (${data.todayEnergy} kWh). Potencia actual: ${data.power} kW - #${this.todayEnergyStagnantCount}`,
 			);
 
 			if (
@@ -197,7 +239,7 @@ class SolarMonitor {
 				const message = `⚠️ Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`;
 				await this.sendAlert(message);
 				console.log(
-					`Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas. - ${new Date().toLocaleString()}\n - Energia diaria: ${data.todayEnergy} kWh\n - Potencia actual: ${data.power} kW`,
+					`[${this.formatDate(new Date())}] Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n - Energia diaria: ${data.todayEnergy} kWh\n - Potencia actual: ${data.power} kW`,
 				);
 				this.energyAlertSent = true;
 			}
@@ -209,12 +251,12 @@ class SolarMonitor {
 					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
 				console.log(
-					`Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas. - ${new Date().toLocaleString()}`,
+					`[${this.formatDate(new Date())}] Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas.`,
 				);
 				this.energyAlertSent = false;
 			}
 			console.log(
-				`Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW - ${new Date().toLocaleString()}`,
+				`[${this.formatDate(new Date())}] Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
 			);
 			this.lastTodayEnergy = data.todayEnergy;
 			this.lastTodayEnergyUpdate = Date.now();
@@ -223,8 +265,13 @@ class SolarMonitor {
 	}
 
 	start() {
-		console.log("Iniciando monitorización del sistema solar...");
-		console.log("Chat IDs configurados:", this.telegramChatIds);
+		console.log(
+			`[${this.formatDate(new Date())}] Iniciando monitorización del sistema solar...`,
+		);
+		console.log(
+			`[${this.formatDate(new Date())}] Chat IDs configurados:`,
+			this.telegramChatIds,
+		);
 		// this.sendTelegramMessage("🟢 Monitor del sistema solar iniciado");
 		setInterval(
 			() => this.checkSystem(),
