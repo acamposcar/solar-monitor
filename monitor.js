@@ -7,6 +7,7 @@ const PLANT_ID = process.env.PLANT_ID;
 const LATITUDE = Number.parseFloat(process.env.LATITUDE);
 const LONGITUDE = Number.parseFloat(process.env.LONGITUDE);
 const TIMEZONE = process.env.TZ;
+const HEALTHCHECK_URL = process.env.HEALTHCHECK_URL;
 
 if (
 	!TELEGRAM_TOKEN ||
@@ -85,7 +86,25 @@ class SolarMonitor {
 			return null;
 		}
 	}
-
+	async pingHealthcheck() {
+		try {
+			const response = await fetch(HEALTHCHECK_URL);
+			if (!response.ok) {
+				console.error(
+					`[${this.formatDate(new Date())}] Error en healthcheck ping: ${response.status}`,
+				);
+			} else {
+				console.log(
+					`[${this.formatDate(new Date())}] Healthcheck ping enviado correctamente`,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[${this.formatDate(new Date())}] Error al enviar healthcheck ping:`,
+				error.message,
+			);
+		}
+	}
 	isSunUp() {
 		const times = SunCalc.getTimes(new Date(), this.latitude, this.longitude);
 		const now = new Date();
@@ -180,6 +199,9 @@ class SolarMonitor {
 	}
 
 	async checkSystem() {
+		if (HEALTHCHECK_URL) {
+			await this.pingHealthcheck();
+		}
 		if (!this.isSunUp()) {
 			this.zeroReadingsCount = 0;
 			this.todayEnergyStagnantCount = 0;
