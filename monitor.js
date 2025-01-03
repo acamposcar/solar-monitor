@@ -187,7 +187,7 @@ class SolarMonitor {
 		if (data.todayEnergy === lastEnergy.value) {
 			lastEnergy.stagnantCount++;
 			console.log(
-				`[${this.#formatDate(new Date())}] Energy unchanged (${data.todayEnergy} kWh). Power: ${data.power} kW - #${lastEnergy.stagnantCount}`,
+				`[${this.#formatDate(new Date())}] Energy unchanged - Daily Energy: ${data.todayEnergy} kWh. Power: ${data.power} kW - #${lastEnergy.stagnantCount}/${this.requiredStagnantReadings}`,
 			);
 
 			if (
@@ -208,12 +208,10 @@ class SolarMonitor {
 				await this.#sendMessage(
 					`✅ Producción de energía restablecida después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergía diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
-			} else {
-				console.log(
-					`[${this.#formatDate(new Date())}] Energy updated - Daily Energy: ${data.todayEnergy} kWh. Power: ${data.power} kW`,
-				);
 			}
-
+			console.log(
+				`[${this.#formatDate(new Date())}] Energy updated - Daily Energy: ${data.todayEnergy} kWh. Power: ${data.power} kW`,
+			);
 			this.#state.lastEnergy = {
 				value: data.todayEnergy,
 				timestamp: Date.now(),
