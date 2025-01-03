@@ -9,3 +9,6 @@ services:
       - PLANT_ID=
       - LATITUDE=
       - LONGITUDE=
+      - TZ=Europe/Madrid
+      - API_URL=https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file
+      - HEALTHCHECK_URL=https://hc-ping.com/xxx
