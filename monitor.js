@@ -31,7 +31,7 @@ class SolarMonitor {
 			: [telegramChatIds];
 
 		// Configuración de intervalos y tiempos
-		this.checkIntervalMinutes = 10;
+		this.checkIntervalMinutes = 20;
 		this.hoursToNotifyPower = 1;
 		this.hoursToNotifyEnergy = 1;
 		this.sunriseBufferMinutes = 30; // Buffer después del amanecer
@@ -93,10 +93,6 @@ class SolarMonitor {
 				console.error(
 					`[${this.formatDate(new Date())}] Error en healthcheck ping: ${response.status}`,
 				);
-			} else {
-				console.log(
-					`[${this.formatDate(new Date())}] Healthcheck ping enviado correctamente`,
-				);
 			}
 		} catch (error) {
 			console.error(
@@ -127,7 +123,7 @@ class SolarMonitor {
 
 			if (timeUntilStart > 0) {
 				console.log(
-					`[${this.formatDate(now)}] Esperando ${Math.round(timeUntilStart / minuteInMs)} minutos después del amanecer (${this.formatDate(sunriseWithBuffer)}) para comenzar el monitoreo`,
+					`[${this.formatDate(now)}] Monitoreo pausado hasta el amanecer. Próximo inicio: (${this.formatDate(sunriseWithBuffer)})`,
 				);
 			} else if (timeUntilEnd < 0) {
 				console.log(
