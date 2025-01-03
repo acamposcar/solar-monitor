@@ -17,7 +17,7 @@ const CONFIG = {
 		timezone: process.env.TZ,
 	},
 	monitoring: {
-		checkIntervalMinutes: 20,
+		checkIntervalMinutes: 30,
 		alertCooldownHours: 4,
 		hoursToNotify: 1,
 		sunriseBufferMinutes: 30,
