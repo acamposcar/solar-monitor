@@ -1,304 +1,292 @@
 const SunCalc = require("suncalc");
 const { decode } = require("html-entities");
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_IDS = JSON.parse(process.env.TELEGRAM_CHAT_IDS);
-const PLANT_ID = process.env.PLANT_ID;
-const LATITUDE = Number.parseFloat(process.env.LATITUDE);
-const LONGITUDE = Number.parseFloat(process.env.LONGITUDE);
-const TIMEZONE = process.env.TZ;
-const HEALTHCHECK_URL = process.env.HEALTHCHECK_URL;
+const CONFIG = {
+	telegram: {
+		token: process.env.TELEGRAM_TOKEN,
+		chatIds: JSON.parse(process.env.TELEGRAM_CHAT_IDS || "[]"),
+		apiUrl: "https://api.telegram.org/bot",
+	},
+	plant: {
+		id: process.env.PLANT_ID,
+		apiUrl: process.env.API_URL,
+	},
+	location: {
+		latitude: Number(process.env.LATITUDE),
+		longitude: Number(process.env.LONGITUDE),
+		timezone: process.env.TZ,
+	},
+	monitoring: {
+		checkIntervalMinutes: 20,
+		alertCooldownHours: 4,
+		hoursToNotify: 1,
+		sunriseBufferMinutes: 30,
+		sunsetBufferMinutes: 30,
+	},
+	healthcheck: {
+		url: process.env.HEALTHCHECK_URL,
+	},
+};
 
-if (
-	!TELEGRAM_TOKEN ||
-	TELEGRAM_CHAT_IDS.length === 0 ||
-	!PLANT_ID ||
-	!LATITUDE ||
-	!LONGITUDE ||
-	!TIMEZONE
-) {
-	console.error("Error: Faltan variables de entorno");
-	process.exit(1);
-}
+const validateConfig = () => {
+	const required = [
+		CONFIG.telegram.token,
+		CONFIG.telegram.chatIds.length,
+		CONFIG.plant.id,
+		CONFIG.location.latitude,
+		CONFIG.location.longitude,
+		CONFIG.location.timezone,
+	];
+
+	if (required.some((value) => !value)) {
+		throw new Error("Missing required environment variables");
+	}
+};
 
 class SolarMonitor {
-	constructor(telegramToken, telegramChatIds) {
-		this.latitude = LATITUDE;
-		this.longitude = LONGITUDE;
-		this.telegramToken = telegramToken;
-		this.telegramChatIds = Array.isArray(telegramChatIds)
-			? telegramChatIds
-			: [telegramChatIds];
+	#state = {
+		lastAlert: null,
+		lastEnergy: {
+			value: null,
+			timestamp: null,
+			stagnantCount: 0,
+		},
+		alertSent: false,
+	};
 
-		// Configuración de intervalos y tiempos
-		this.checkIntervalMinutes = 20;
-		this.hoursToNotifyPower = 1;
-		this.hoursToNotifyEnergy = 1;
-		this.sunriseBufferMinutes = 30; // Buffer después del amanecer
-		this.sunsetBufferMinutes = 30; // Buffer antes del atardecer
-
-		// Cálculo de lecturas necesarias basado en los intervalos
-		this.requiredZeroReadings =
-			(this.hoursToNotifyPower * 60) / this.checkIntervalMinutes;
+	constructor() {
 		this.requiredStagnantReadings =
-			(this.hoursToNotifyEnergy * 60) / this.checkIntervalMinutes;
-
-		// Contadores y estado
-		this.zeroReadingsCount = 0;
-		this.lastAlert = null;
-		this.alertCooldownHours = 4;
-		this.lastTodayEnergy = null;
-		this.lastTodayEnergyUpdate = null;
-		this.todayEnergyStagnantCount = 0;
-		this.energyAlertSent = false;
-
-		this.apiUrl =
-			"https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file";
+			(CONFIG.monitoring.hoursToNotify * 60) /
+			CONFIG.monitoring.checkIntervalMinutes;
 	}
 
-	formatDate(date) {
-		return date.toLocaleString("es-ES", { timeZone: TIMEZONE });
-	}
-	async getCurrentPowerAndEnergy() {
+	async #fetchSolarData() {
 		try {
-			const url = `${this.apiUrl}?kk=${PLANT_ID}`;
+			const url = `${CONFIG.plant.apiUrl}?kk=${CONFIG.plant.id}`;
 			const response = await fetch(url);
-			const jsonData = await response.json();
-			if (!jsonData.success) {
-				throw new Error("API response indicates failure");
-			}
-			const decodedData = decode(jsonData.data);
-			const parsedData = JSON.parse(decodedData);
-			const currentPower = parsedData.realKpi.realTimePower;
-			const todayEnergy = parsedData.realKpi.dailyEnergy;
+			const { success, data } = await response.json();
+
+			if (!success) throw new Error("API response indicates failure");
+
+			const parsedData = JSON.parse(decode(data));
+			const { realTimePower, dailyEnergy } = parsedData.realKpi;
+
 			return {
-				power: Number.parseFloat(currentPower),
-				todayEnergy: Number.parseFloat(todayEnergy),
+				power: Number(realTimePower),
+				todayEnergy: Number(dailyEnergy),
 			};
 		} catch (error) {
-			console.error(
-				"Error al obtener datos de la instalación solar:",
-				error.message,
-			);
-			await this.sendTelegramMessage(
+			console.error("Solar data fetch error:", error.message);
+			await this.#sendMessage(
 				"⚠️ Error al obtener datos de la instalación solar",
 			);
 			return null;
 		}
 	}
-	async pingHealthcheck() {
-		try {
-			const response = await fetch(HEALTHCHECK_URL);
-			if (!response.ok) {
-				console.error(
-					`[${this.formatDate(new Date())}] Error en healthcheck ping: ${response.status}`,
-				);
-			}
-		} catch (error) {
-			console.error(
-				`[${this.formatDate(new Date())}] Error al enviar healthcheck ping:`,
-				error.message,
-			);
-		}
-	}
-	isSunUp() {
-		const times = SunCalc.getTimes(new Date(), this.latitude, this.longitude);
-		const now = new Date();
-		const minuteInMs = 60 * 1000;
-		// Añadir buffer después del amanecer
-		const sunriseWithBuffer = new Date(
-			times.sunrise.getTime() + this.sunriseBufferMinutes * minuteInMs,
-		);
-		// Restar buffer antes del atardecer
-		const sunsetWithBuffer = new Date(
-			times.sunset.getTime() - this.sunsetBufferMinutes * minuteInMs,
-		);
 
-		const isWithinBufferedDaylight =
-			now > sunriseWithBuffer && now < sunsetWithBuffer;
+	async #sendMessage(message, isAlert = false) {
+		const timestamp = new Date().toLocaleString("es-ES", {
+			timeZone: CONFIG.location.timezone,
+		});
+		const formattedMessage = isAlert
+			? `🔴 <b>Alerta Sistema Solar</b>\n\n${message}\n\nFecha: ${timestamp}`
+			: message;
 
-		if (!isWithinBufferedDaylight) {
-			const timeUntilStart = sunriseWithBuffer - now;
-			const timeUntilEnd = sunsetWithBuffer - now;
-
-			if (timeUntilStart > 0) {
-				console.log(
-					`[${this.formatDate(now)}] Monitoreo pausado hasta el amanecer. Próximo inicio: (${this.formatDate(sunriseWithBuffer)})`,
-				);
-			} else if (timeUntilEnd < 0) {
-				console.log(
-					`[${this.formatDate(now)}] Monitoreo pausado hasta el amanecer. Próximo inicio: ${this.formatDate(new Date(times.sunrise.getTime() + 24 * 60 * 60 * 1000 + this.sunriseBufferMinutes * minuteInMs))}`,
-				);
-			}
-		}
-
-		return isWithinBufferedDaylight;
-	}
-
-	canSendAlert() {
-		if (!this.lastAlert) return true;
-		const hoursSinceLastAlert =
-			(Date.now() - this.lastAlert) / (1000 * 60 * 60);
-		return hoursSinceLastAlert >= this.alertCooldownHours;
-	}
-
-	async sendTelegramMessage(message) {
-		const telegramUrl = `https://api.telegram.org/bot${this.telegramToken}/sendMessage`;
-		const errors = [];
-
-		for (const chatId of this.telegramChatIds) {
+		const sendPromises = CONFIG.telegram.chatIds.map(async (chatId) => {
 			try {
-				const response = await fetch(telegramUrl, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
+				const response = await fetch(
+					`${CONFIG.telegram.apiUrl}${CONFIG.telegram.token}/sendMessage`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							chat_id: chatId,
+							text: formattedMessage,
+							parse_mode: "HTML",
+						}),
 					},
-					body: JSON.stringify({
-						chat_id: chatId,
-						text: message,
-						parse_mode: "HTML",
-					}),
-				});
+				);
 
 				if (!response.ok) {
-					const errorData = await response.json();
-					throw new Error(`Telegram API error: ${errorData.description}`);
+					const error = await response.json();
+					throw new Error(`Telegram API error: ${error.description}`);
 				}
 
-				console.log(
-					`[${this.formatDate(new Date())}] Mensaje enviado correctamente a ${chatId}`,
-				);
+				console.log(`[${timestamp}] Message sent to ${chatId}`);
 			} catch (error) {
 				console.error(
-					`[${this.formatDate(new Date())}] Error al enviar mensaje a ${chatId}:`,
+					`[${timestamp}] Failed to send message to ${chatId}:`,
 					error.message,
 				);
-				errors.push({ chatId, error: error.message });
 			}
-		}
+		});
 
-		if (errors.length > 0) {
-			console.error(
-				`[${this.formatDate(new Date())}] Errores al enviar mensajes:`,
-				errors,
+		await Promise.all(sendPromises);
+	}
+
+	#isSunUp() {
+		const now = new Date();
+		const times = SunCalc.getTimes(
+			now,
+			CONFIG.location.latitude,
+			CONFIG.location.longitude,
+		);
+		const minuteInMs = 60 * 1000;
+
+		const sunriseWithBuffer = new Date(
+			times.sunrise.getTime() +
+				CONFIG.monitoring.sunriseBufferMinutes * minuteInMs,
+		);
+		const sunsetWithBuffer = new Date(
+			times.sunset.getTime() -
+				CONFIG.monitoring.sunsetBufferMinutes * minuteInMs,
+		);
+
+		if (now <= sunriseWithBuffer || now >= sunsetWithBuffer) {
+			const nextSunrise =
+				now >= sunsetWithBuffer
+					? new Date(times.sunrise.getTime() + 24 * 60 * 60 * 1000)
+					: sunriseWithBuffer;
+
+			console.log(
+				`[${this.#formatDate(now)}] Monitoring paused until next sunrise: ${this.#formatDate(nextSunrise)}`,
 			);
+			return false;
 		}
+
+		return true;
 	}
 
-	async sendAlert(message) {
-		if (!this.canSendAlert()) return;
-
-		const formattedMessage = `🔴 <b>Alerta Sistema Solar</b>\n\n${message}\n\nFecha: ${this.formatDate(new Date())}`;
-		await this.sendTelegramMessage(formattedMessage);
-
-		this.lastAlert = Date.now();
+	#canSendAlert() {
+		if (!this.#state.lastAlert) return true;
+		return (
+			(Date.now() - this.#state.lastAlert) / (1000 * 60 * 60) >=
+			CONFIG.monitoring.alertCooldownHours
+		);
 	}
 
-	async checkSystem() {
-		if (HEALTHCHECK_URL) {
-			await this.pingHealthcheck();
-		}
-		if (!this.isSunUp()) {
-			this.zeroReadingsCount = 0;
-			this.todayEnergyStagnantCount = 0;
-			this.lastTodayEnergy = null;
-			this.lastTodayEnergyUpdate = null;
-			this.energyAlertSent = false;
+	#formatDate(date) {
+		return date.toLocaleString("es-ES", { timeZone: CONFIG.location.timezone });
+	}
+
+	async #checkEnergy(data) {
+		const { lastEnergy } = this.#state;
+
+		if (!lastEnergy.value) {
+			this.#state.lastEnergy = {
+				value: data.todayEnergy,
+				timestamp: Date.now(),
+				stagnantCount: 0,
+			};
+			console.log(
+				`[${this.#formatDate(new Date())}] Daily energy: ${data.todayEnergy} kWh. Current power: ${data.power} kW`,
+			);
 			return;
 		}
 
-		const data = await this.getCurrentPowerAndEnergy();
-		if (!data) return;
-
-		// Verificación de potencia actual
-		// if (data.power < 0.01) {
-		// 	this.zeroReadingsCount++;
-		// 	console.log(
-		// 		`Lectura de potencia cero (${data.power} KW) #${this.zeroReadingsCount} - ${new Date().toLocaleString()}`,
-		// 	);
-
-		// 	if (this.zeroReadingsCount >= this.requiredZeroReadings) {
-		// 		const message = `⚠️ Sistema solar posiblemente apagado.\nSin producción durante las últimas ${this.hoursToNotifyPower} horas con luz solar.\nÚltima lectura: ${data.power} kW`;
-		// 		await this.sendAlert(message);
-		// 	}
-		// } else {
-		// 	if (this.zeroReadingsCount > 0) {
-		// 		console.log("Sistema funcionando normalmente. Reiniciando contador.");
-		// 		if (this.zeroReadingsCount >= this.requiredZeroReadings) {
-		// 			await this.sendTelegramMessage(
-		// 				`✅ Sistema solar funcionando nuevamente\nPotencia actual: ${data.power} kW`,
-		// 			);
-		// 		}
-		// 	}
-		// 	console.log(`Potencia actual: ${data.power} kW`);
-		// 	this.zeroReadingsCount = 0;
-		// }
-
-		// Verificación de energía diaria
-		if (this.lastTodayEnergy === null) {
-			this.lastTodayEnergy = data.todayEnergy;
-			this.lastTodayEnergyUpdate = Date.now();
-			this.todayEnergyStagnantCount = 0;
+		if (data.todayEnergy === lastEnergy.value) {
+			lastEnergy.stagnantCount++;
 			console.log(
-				`[${this.formatDate(new Date())}] Energía diaria: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
-			);
-		} else if (data.todayEnergy === this.lastTodayEnergy) {
-			this.todayEnergyStagnantCount++;
-			console.log(
-				`[${this.formatDate(new Date())}] Energía diaria sin cambios (${data.todayEnergy} kWh). Potencia actual: ${data.power} kW - #${this.todayEnergyStagnantCount}`,
+				`[${this.#formatDate(new Date())}] Energy unchanged (${data.todayEnergy} kWh). Power: ${data.power} kW - #${lastEnergy.stagnantCount}`,
 			);
 
 			if (
-				this.todayEnergyStagnantCount >= this.requiredStagnantReadings &&
-				!this.energyAlertSent
+				lastEnergy.stagnantCount >= this.requiredStagnantReadings &&
+				!this.#state.alertSent
 			) {
 				const hoursStagnant =
-					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
-				const message = `⚠️ Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`;
-				await this.sendAlert(message);
-				console.log(
-					`[${this.formatDate(new Date())}] Sistema solar posiblemente apagado. La producción de energía diaria no ha cambiado en ${hoursStagnant.toFixed(1)} horas.\n - Energia diaria: ${data.todayEnergy} kWh\n - Potencia actual: ${data.power} kW`,
+					(Date.now() - lastEnergy.timestamp) / (1000 * 60 * 60);
+				await this.#sendAlert(
+					`⚠️ Sistema solar posiblemente apagado. Energía diaria sin cambios durante ${hoursStagnant.toFixed(1)} horas.\n\nEnergía diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
-				this.energyAlertSent = true;
+				this.#state.alertSent = true;
 			}
 		} else {
-			if (this.energyAlertSent) {
+			if (this.#state.alertSent) {
 				const hoursStagnant =
-					(Date.now() - this.lastTodayEnergyUpdate) / (1000 * 60 * 60);
-				await this.sendTelegramMessage(
-					`✅ La producción de energía diaria se ha recuperado después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergia diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
+					(Date.now() - lastEnergy.timestamp) / (1000 * 60 * 60);
+				await this.#sendMessage(
+					`✅ Producción de energía restablecida después de ${hoursStagnant.toFixed(1)} horas.\n\nEnergía diaria: ${data.todayEnergy} kWh\nPotencia actual: ${data.power} kW`,
 				);
+			} else {
 				console.log(
-					`[${this.formatDate(new Date())}] Producción de energía diaria recuperada después de ${hoursStagnant.toFixed(1)} horas.`,
+					`[${this.#formatDate(new Date())}] Energy updated - Daily Energy: ${data.todayEnergy} kWh. Power: ${data.power} kW`,
 				);
-				this.energyAlertSent = false;
 			}
-			console.log(
-				`[${this.formatDate(new Date())}] Energía diaria actualizada: ${data.todayEnergy} kWh. Potencia actual: ${data.power} kW`,
-			);
-			this.lastTodayEnergy = data.todayEnergy;
-			this.lastTodayEnergyUpdate = Date.now();
-			this.todayEnergyStagnantCount = 0;
+
+			this.#state.lastEnergy = {
+				value: data.todayEnergy,
+				timestamp: Date.now(),
+				stagnantCount: 0,
+			};
+			this.#state.alertSent = false;
+		}
+	}
+
+	async #sendAlert(message) {
+		if (!this.#canSendAlert()) return;
+		await this.#sendMessage(message, true);
+		this.#state.lastAlert = Date.now();
+	}
+
+	async #checkSystem() {
+		if (CONFIG.healthcheck.url) {
+			try {
+				const response = await fetch(CONFIG.healthcheck.url);
+				if (!response.ok) {
+					console.error(
+						`[${this.#formatDate(new Date())}] Healthcheck failed: ${response.status}`,
+					);
+				}
+			} catch (error) {
+				console.error(
+					`[${this.#formatDate(new Date())}] Healthcheck error:`,
+					error.message,
+				);
+			}
+		}
+
+		if (!this.#isSunUp()) {
+			this.#state = {
+				lastAlert: null,
+				lastEnergy: {
+					value: null,
+					timestamp: null,
+					stagnantCount: 0,
+				},
+				alertSent: false,
+			};
+			return;
+		}
+
+		const data = await this.#fetchSolarData();
+		if (data) {
+			await this.#checkEnergy(data);
 		}
 	}
 
 	start() {
 		console.log(
-			`[${this.formatDate(new Date())}] Iniciando monitorización del sistema solar...`,
+			`[${this.#formatDate(new Date())}] Starting solar system monitoring...`,
 		);
 		console.log(
-			`[${this.formatDate(new Date())}] Chat IDs configurados:`,
-			this.telegramChatIds,
+			`[${this.#formatDate(new Date())}] Configured chat IDs:`,
+			CONFIG.telegram.chatIds,
 		);
-		// this.sendTelegramMessage("🟢 Monitor del sistema solar iniciado");
+
 		setInterval(
-			() => this.checkSystem(),
-			this.checkIntervalMinutes * 60 * 1000,
+			() => this.#checkSystem(),
+			CONFIG.monitoring.checkIntervalMinutes * 60 * 1000,
 		);
-		this.checkSystem();
+		this.#checkSystem();
 	}
 }
 
-// Uso del monitor
-const monitor = new SolarMonitor(TELEGRAM_TOKEN, TELEGRAM_CHAT_IDS);
-monitor.start();
+try {
+	validateConfig();
+	const monitor = new SolarMonitor();
+	monitor.start();
+} catch (error) {
+	console.error("Startup error:", error.message);
+	process.exit(1);
+}
