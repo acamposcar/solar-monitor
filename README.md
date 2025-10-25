@@ -30,24 +30,14 @@ Or run with Docker (see Docker section).
 
 Create a .env or provide environment variables in your runtime environment. Example keys:
 
-- TELEGRAM_TOKEN — Telegram bot token (e.g. `123456:ABC-...`)
-- TELEGRAM_CHAT_IDS — JSON array of chat IDs (example: '["12345","67890"]' or `[12345,67890]`)
+- TELEGRAM_TOKEN — Telegram bot token
+- TELEGRAM_CHAT_IDS — JSON array of chat ID
 - PLANT_ID — Plant identifier used by your API
-- API_URL — Base URL for the plant API (the script calls: `${API_URL}?kk=${PLANT_ID}`)
+- API_URL — Base URL for the plant API
 - LATITUDE — Plant latitude (number)
 - LONGITUDE — Plant longitude (number)
 - TZ — Timezone (IANA string, used for timestamp formatting and SunCalc)
 - HEALTHCHECK_URL — (optional) URL to ping every run (useful for monitoring)
-
-Example (.env)
-TELEGRAM_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-TELEGRAM_CHAT_IDS='["11111111","22222222"]'
-PLANT_ID=xxxxxxx
-API_URL=https://example-fusion-solar-api.local/data
-LATITUDE=40.4168
-LONGITUDE=-3.7038
-TZ=Europe/Madrid
-HEALTHCHECK_URL=
 
 Notes:
 - TELEGRAM_CHAT_IDS must be parseable JSON string in the environment.
