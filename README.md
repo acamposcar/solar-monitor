@@ -13,16 +13,16 @@ Solar Monitor watches a FusionSolar-like installation and notifies configured Te
 ## Quick Start
 
 1. Clone the repository
-   git clone https://github.com/acamposcar/solar-monitor.git
-   cd solar-monitor
+   - git clone https://github.com/acamposcar/solar-monitor.git
+   - cd solar-monitor
 
 2. Install dependencies (if running locally)
-   npm install
+   - npm install
 
 3. Configure environment variables (see example below).
 
 4. Run
-   node monitor.js
+   - node monitor.js
 
 Or run with Docker (see Docker section).
 
