@@ -55,8 +55,12 @@ Default monitoring settings (in `monitor.js` under CONFIG.monitoring):
 Alert logic:
 - requiredStagnantReadings = (hoursToNotify * 60) / checkIntervalMinutes
 - If dailyEnergy remains unchanged across `requiredStagnantReadings` checks during daylight, an alert is sent.
-- After an alert, the script waits `alertCooldownHours` before sending another alert.
-- When dailyEnergy increases again, a recovery message is sent.
+- After a delivered alert, the script waits `alertCooldownHours` before sending
+  another alert to that chat. Failed deliveries are retried at the next check.
+- When dailyEnergy increases again, a recovery message is sent to chats that
+  received an alert. Failed recovery messages are retried at the next check.
+- HTTP requests time out after 15 seconds. If a check is still running when the
+  next interval starts, that interval is skipped.
 
 Sunlight handling:
 - Uses SunCalc to compute sunrise/sunset for given coordinates and TZ.
@@ -83,6 +87,8 @@ docker compose logs -f solar-monitor
 
 The `.env` file is ignored by Git. Keep your Telegram token and any optional
 healthcheck URL out of the repository.
+
+Run the automated tests with `npm test` after `npm ci`.
 
 ### Dockhand (Git stack)
 

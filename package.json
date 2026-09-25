@@ -3,7 +3,8 @@
 	"version": "1.0.0",
 	"main": "monitor.js",
 	"scripts": {
-		"dev": "node --env-file=.env monitor.js"
+		"dev": "node --env-file=.env monitor.js",
+		"test": "node --test"
 	},
 	"author": "",
 	"license": "ISC",
