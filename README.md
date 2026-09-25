@@ -86,22 +86,25 @@ healthcheck URL out of the repository.
 
 ### Dockhand (Git stack)
 
-1. Push this Compose file and Dockerfile to your private GitHub repository.
-2. In Dockhand, add a Git credential under **Settings → Git** (SSH key or HTTPS
-   token), then add `git@github.com:acamposcar/solar-monitor.git` as a repository.
-3. Create a stack **From Git** on the ARM64 Docker environment. Select the
+1. Add `https://github.com/acamposcar/solar-monitor.git` as a public Git
+   repository in Dockhand. No Git credential is needed for this repository.
+2. Create a stack **From Git** on the ARM64 Docker environment. Select the
    repository and `main` branch, set the Compose path to `docker-compose.yml`,
    and enable **Build images on deploy**.
-4. In the stack's **Environment** tab, set `TELEGRAM_TOKEN`,
+3. In the stack's **Environment** tab, set `TELEGRAM_TOKEN`,
    `TELEGRAM_CHAT_IDS`, `PLANT_ID`, `LATITUDE`, and `LONGITUDE`. Set `TZ`,
    `API_URL`, and `HEALTHCHECK_URL` there if you need different values. Use a
-   JSON array for chat IDs, for example `["123456789"]`.
-5. Deploy the stack and inspect its logs. A successful start logs
+   JSON array for chat IDs, for example `["123456789"]`. Mark
+   `TELEGRAM_TOKEN`, `PLANT_ID`, and any private `HEALTHCHECK_URL` as secrets
+   in Dockhand; do not add real values to Git. These values are passed to the
+   container as environment variables and remain visible to Docker admins.
+4. Deploy the stack and inspect its logs. A successful start logs
    `Starting solar system monitoring...`; checks run every 30 minutes during
    daylight. The first check also runs immediately.
 
-Dockhand must fetch the pushed commit itself; a local clone on the Docker host
-does not make unpushed changes available to a Git stack.
+Dockhand fetches commits from GitHub; a local clone on the Docker host does not
+make unpushed changes available to a Git stack. Restrict access to Dockhand's
+admin interface because it can control the Docker host.
 
 ## Troubleshooting
 

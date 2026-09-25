@@ -4,6 +4,11 @@ services:
       context: .
     image: solar-monitor:local
     restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:?Set TELEGRAM_TOKEN in Dockhand}
       TELEGRAM_CHAT_IDS: ${TELEGRAM_CHAT_IDS:?Set TELEGRAM_CHAT_IDS in Dockhand}
