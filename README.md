@@ -68,24 +68,40 @@ Healthcheck:
 
 ## Docker
 
-Build the image:
-  docker build -t solar-monitor .
+The Compose stack builds the image from this repository on the Docker host. On an
+ARM64 host this produces an ARM64 image; no emulation or registry login is needed.
+The image uses Node.js 24 and exposes no ports. No persistent volume is required;
+monitoring state is kept in memory and starts fresh after a restart.
 
-Run with env:
-  docker run -d \
-    --env TELEGRAM_TOKEN="$TELEGRAM_TOKEN" \
-    --env TELEGRAM_CHAT_IDS="$TELEGRAM_CHAT_IDS" \
-    --env PLANT_ID="$PLANT_ID" \
-    --env API_URL="$API_URL" \
-    --env LATITUDE="$LATITUDE" \
-    --env LONGITUDE="$LONGITUDE" \
-    --env TZ="$TZ" \
-    --env HEALTHCHECK_URL="$HEALTHCHECK_URL" \
-    --name solar-monitor \
-    solar-monitor
+For a command-line deployment, copy `.env.example` to `.env`, replace the sample
+values with your own, then run:
 
-Or use the provided `docker-compose.yml`:
-  docker-compose up -d
+```sh
+docker compose up -d --build
+docker compose logs -f solar-monitor
+```
+
+The `.env` file is ignored by Git. Keep your Telegram token and any optional
+healthcheck URL out of the repository.
+
+### Dockhand (Git stack)
+
+1. Push this Compose file and Dockerfile to your private GitHub repository.
+2. In Dockhand, add a Git credential under **Settings → Git** (SSH key or HTTPS
+   token), then add `git@github.com:acamposcar/solar-monitor.git` as a repository.
+3. Create a stack **From Git** on the ARM64 Docker environment. Select the
+   repository and `main` branch, set the Compose path to `docker-compose.yml`,
+   and enable **Build images on deploy**.
+4. In the stack's **Environment** tab, set `TELEGRAM_TOKEN`,
+   `TELEGRAM_CHAT_IDS`, `PLANT_ID`, `LATITUDE`, and `LONGITUDE`. Set `TZ`,
+   `API_URL`, and `HEALTHCHECK_URL` there if you need different values. Use a
+   JSON array for chat IDs, for example `["123456789"]`.
+5. Deploy the stack and inspect its logs. A successful start logs
+   `Starting solar system monitoring...`; checks run every 30 minutes during
+   daylight. The first check also runs immediately.
+
+Dockhand must fetch the pushed commit itself; a local clone on the Docker host
+does not make unpushed changes available to a Git stack.
 
 ## Troubleshooting
 

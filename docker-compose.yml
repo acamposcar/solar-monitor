@@ -1,14 +1,15 @@
 services:
   solar-monitor:
-    image: ghcr.io/acamposcar/solar:latest
-    container_name: solar-monitor
-    restart: always
+    build:
+      context: .
+    image: solar-monitor:local
+    restart: unless-stopped
     environment:
-      - TELEGRAM_TOKEN=
-      - TELEGRAM_CHAT_IDS=
-      - PLANT_ID=
-      - LATITUDE=
-      - LONGITUDE=
-      - TZ=Europe/Madrid
-      - API_URL=https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file
-      - HEALTHCHECK_URL=https://hc-ping.com/xxx
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:?Set TELEGRAM_TOKEN in Dockhand}
+      TELEGRAM_CHAT_IDS: ${TELEGRAM_CHAT_IDS:?Set TELEGRAM_CHAT_IDS in Dockhand}
+      PLANT_ID: ${PLANT_ID:?Set PLANT_ID in Dockhand}
+      LATITUDE: ${LATITUDE:?Set LATITUDE in Dockhand}
+      LONGITUDE: ${LONGITUDE:?Set LONGITUDE in Dockhand}
+      TZ: ${TZ:-Europe/Madrid}
+      API_URL: ${API_URL:-https://uni001eu5.fusionsolar.huawei.com/rest/pvms/web/kiosk/v1/station-kiosk-file}
+      HEALTHCHECK_URL: ${HEALTHCHECK_URL:-}
